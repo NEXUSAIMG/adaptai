@@ -3,22 +3,25 @@
 # ============================================
 """
 Este script configura o sistema inicial:
-1. Cria Super Admin do sistema
-2. Cria escola de demonstração
-3. Cria usuários (admin, coordenador, professores)
-4. Associa alunos existentes aos professores corretos
+1. Cria tabelas no banco de dados
+2. Cria Super Admin do sistema
+3. Cria escola de demonstração
+4. Cria usuários (admin, coordenador, professores)
+5. Associa alunos existentes aos professores corretos
 
 EXECUTAR: python -m app.scripts.setup_inicial
 """
 
+from app.core.config import settings
 from sqlalchemy.orm import Session
-from app.database import SessionLocal, engine
+from app.database import SessionLocal, engine, Base
 from app.models.user import User, UserRole
 from app.models.student import Student
 from app.models.escola import Escola, ConfiguracaoEscola
 from app.core.security import get_password_hash
 from datetime import datetime, timezone
 
+        
 
 def get_or_create_user(db: Session, email: str, name: str, password: str, role: UserRole, escola_id: int = None) -> User:
     """
@@ -72,13 +75,14 @@ def criar_escola_demo(db: Session) -> Escola:
         cnpj="12.345.678/0001-90",
         email="contato@escolainclusiva.com.br",
         telefone="(91) 3333-4444",
-        endereco="Av. Educação, 1000",
+        logradouro="Av. Educação, 1000",       # CORRIGIDO
         cidade="Belém",
         estado="PA",
         cep="66000-000",
-        tipo_escola="Educação Especial",
-        website="https://escolainclusiva.com.br",
-        is_active=True
+        tipo="ESCOLA",                         # CORRIGIDO
+        segmento="Educação Especial",          # CORRIGIDO
+        site="https://escolainclusiva.com.br", # CORRIGIDO
+        ativa=True                             # CORRIGIDO
     )
     db.add(escola)
     db.commit()
@@ -88,11 +92,9 @@ def criar_escola_demo(db: Session) -> Escola:
     # Criar configuração da escola
     config = ConfiguracaoEscola(
         escola_id=escola.id,
-        modelo_ia="claude-3-5-sonnet-20241022",
-        permite_pei=True,
-        permite_materiais_adaptados=True,
-        max_alunos=100,
-        max_professores=20
+        modelo_ia_preferido="claude-3-5-sonnet-20241022", # CORRIGIDO
+        pei_automatico_ativo=True,                        # CORRIGIDO
+        materiais_adaptativos_ativo=True                  # CORRIGIDO
     )
     db.add(config)
     db.commit()
@@ -250,6 +252,14 @@ def main():
     print("🚀 SETUP INICIAL - AdaptAI")
     print("=" * 60)
     
+    print(f"Esse script vai alterar o seguinte banco de dados -> {settings.db_url}")
+    
+    input("Verifique a URL acima. Pressione ENTER se for o banco local, ou CTRL+C para sair!");
+
+    print("Criando tabelas no banco de dados...")
+    Base.metadata.create_all(bind=engine)
+    print("✅ Tabelas criadas ou já existentes.")
+
     db = SessionLocal()
     
     try:
