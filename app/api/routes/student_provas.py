@@ -125,10 +125,25 @@ def obter_questoes(prova_aluno_id: int, current_student: Student = Depends(get_c
     
     respostas_dadas = db.query(RespostaAluno).filter(RespostaAluno.prova_aluno_id == prova_aluno_id).all()
     respostas_dict = {r.questao_id: r.resposta_aluno for r in respostas_dadas}
-    
+
+    # TC-151: expor o tempo limite e a acomodacao de "tempo estendido".
+    # A prova define o tempo base (tempo_limite_minutos, opcional). Alunos
+    # laudados (TDAH, TEA, dislexia, discalculia) tem direito a 1.5x. O tempo
+    # efetivo ja vem calculado para o frontend so exibir o cronometro.
+    prova = db.query(Prova).filter(Prova.id == prova_aluno.prova_id).first()
+    tempo_limite = prova.tempo_limite_minutos if prova else None
+    diag = current_student.diagnosis or {}
+    tem_tempo_estendido = any(bool(diag.get(k)) for k in ("tdah", "tea", "dislexia", "discalculia"))
+    tempo_efetivo = None
+    if tempo_limite:
+        tempo_efetivo = int(round(tempo_limite * 1.5)) if tem_tempo_estendido else int(tempo_limite)
+
     return {
         "prova_aluno_id": prova_aluno_id,
         "status": prova_aluno.status.value,
+        "tempo_limite_minutos": tempo_limite,
+        "tempo_estendido": tem_tempo_estendido,
+        "tempo_efetivo_minutos": tempo_efetivo,
         "questoes": [{"id": q.id, "numero": q.numero, "enunciado": q.enunciado, "opcoes": q.opcoes, "resposta_ja_dada": respostas_dict.get(q.id)} for q in questoes]
     }
 

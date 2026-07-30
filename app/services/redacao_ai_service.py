@@ -9,7 +9,44 @@ import json
 import re
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+from starlette.concurrency import run_in_threadpool
 from app.core.anthropic_client import get_anthropic_client, get_default_model
+
+
+def _extrair_json(content: str) -> dict:
+    """
+    TC-144/145: extrai um objeto JSON da resposta da IA de forma robusta.
+
+    O parse cru (json.loads direto do regex) falhava quando o modelo:
+    - envolvia o JSON em cercas markdown (```json ... ```);
+    - deixava virgula final antes de } ou ];
+    - adicionava texto antes/depois do objeto.
+
+    Aqui limpamos esses casos antes de dar json.loads. Levanta ValueError com
+    mensagem clara se ainda assim nao houver JSON valido.
+    """
+    if not content:
+        raise ValueError("Resposta da IA vazia")
+
+    texto = content.strip()
+
+    # Remove cercas de codigo markdown (```json ... ``` ou ``` ... ```)
+    if "```" in texto:
+        texto = re.sub(r"```(?:json)?", "", texto)
+
+    # Isola do primeiro { ao ultimo } (o objeto JSON externo)
+    match = re.search(r"\{[\s\S]*\}", texto)
+    if not match:
+        raise ValueError("Resposta da IA nao contem JSON valido")
+
+    bruto = match.group()
+
+    try:
+        return json.loads(bruto)
+    except json.JSONDecodeError:
+        # Reparo leve: remove virgulas finais antes de } ou ]
+        reparado = re.sub(r",(\s*[}\]])", r"\1", bruto)
+        return json.loads(reparado)
 
 # NOTA: antes este modulo instanciava Anthropic() em module-level, o que causava
 # erro na importacao se ANTHROPIC_API_KEY nao estivesse setada ainda.
@@ -218,23 +255,22 @@ IMPORTANTE:
 """
 
         try:
-            response = get_anthropic_client().messages.create(
+            # TC-144/145: cliente Anthropic e sincrono -> offload para nao travar
+            # o event loop (mesma correcao do diario).
+            response = await run_in_threadpool(
+                get_anthropic_client().messages.create,
                 model=get_default_model(),
                 max_tokens=2000,
                 messages=[{"role": "user", "content": prompt}]
             )
-            
+
             content = response.content[0].text
-            
-            # Extrair JSON da resposta
-            json_match = re.search(r'\{[\s\S]*\}', content)
-            if json_match:
-                tema_data = json.loads(json_match.group())
-                tema_data["nivel_dificuldade"] = nivel_dificuldade
-                return tema_data
-            else:
-                raise ValueError("Resposta da IA não contém JSON válido")
-                
+
+            # Extrair JSON da resposta (parser robusto)
+            tema_data = _extrair_json(content)
+            tema_data["nivel_dificuldade"] = nivel_dificuldade
+            return tema_data
+
         except Exception as e:
             print(f"[ERRO] Erro ao gerar tema: {e}")
             raise
@@ -333,19 +369,20 @@ IMPORTANTE:
 """
 
         try:
-            response = get_anthropic_client().messages.create(
+            # TC-144/145: offload da chamada sincrona para nao travar o loop.
+            response = await run_in_threadpool(
+                get_anthropic_client().messages.create,
                 model=get_default_model(),
                 max_tokens=3000,
                 messages=[{"role": "user", "content": prompt}]
             )
-            
+
             content = response.content[0].text
-            
-            # Extrair JSON
-            json_match = re.search(r'\{[\s\S]*\}', content)
-            if json_match:
-                correcao = json.loads(json_match.group())
-                
+
+            # Extrair JSON (parser robusto: trata cercas markdown e virgula final)
+            if True:
+                correcao = _extrair_json(content)
+
                 # Calcular nota final
                 nota_final = (
                     correcao.get("nota_competencia_1", 0) +
@@ -372,9 +409,7 @@ IMPORTANTE:
                         ]
                 
                 return correcao
-            else:
-                raise ValueError("Resposta da IA não contém JSON válido")
-                
+
         except Exception as e:
             print(f"[ERRO] Erro ao corrigir redação: {e}")
             raise

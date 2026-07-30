@@ -34,6 +34,7 @@ from app.api.routes import pei  # PEI COM IA
 from app.api.routes import relatorios  # RELATÓRIOS DE TERAPIAS
 from app.api.routes import relatorios_analise  # ANÁLISE CONSOLIDADA DE RELATÓRIOS
 from app.api.routes import materiais_adaptados  # MATERIAIS ADAPTADOS COM IA
+from app.api.routes import student_materiais_adaptados  # PONTE: MATERIAIS ADAPTADOS NO PORTAL DO ALUNO (TC-027/028)
 from app.api.routes import planos  # PLANOS E ASSINATURAS MULTI-TENANT
 from app.api.routes import escolas  # ESCOLAS (TENANTS)
 from app.api.routes import planejamento_bncc  # PLANEJAMENTO BNCC E PEI
@@ -314,6 +315,7 @@ app.include_router(pei.router, prefix="/api/v1", tags=["❤️ PEI com IA"])
 app.include_router(relatorios.router, prefix="/api/v1", tags=["📋 Relatórios"])
 app.include_router(relatorios_analise.router, prefix="/api/v1", tags=["🎨 Jornada Terapêutica"])
 app.include_router(materiais_adaptados.router, prefix="/api/v1", tags=["🎨 Materiais Adaptados"])
+app.include_router(student_materiais_adaptados.router, prefix="/api/v1", tags=["🎨 Student Materiais Adaptados"])
 app.include_router(planos.router, prefix="/api/v1", tags=["💳 Planos"])
 app.include_router(escolas.router, prefix="/api/v1", tags=["🏫 Escolas"])
 app.include_router(planejamento_bncc.router, prefix="/api/v1", tags=["📚 Planejamento BNCC"])

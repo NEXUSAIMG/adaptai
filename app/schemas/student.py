@@ -8,6 +8,10 @@ class StudentBase(BaseModel):
     grade_level: Optional[str] = Field(None, max_length=50, description="Ex: 1º ano, 2º ano, 5º ano")
     
 class StudentCreate(StudentBase):
+    # TC-017: no cadastro, a serie/ano e OBRIGATORIA (a coluna no banco e NOT NULL).
+    # Sobrescreve o Optional herdado do StudentBase para rejeitar valor vazio/nulo
+    # com um 422 claro em vez de estourar no INSERT.
+    grade_level: str = Field(..., min_length=1, max_length=50, description="Serie/ano escolar (obrigatorio)")
     email: Optional[str] = Field(default=None, description="Email para login do estudante")
     password: Optional[str] = Field(default=None, min_length=6, description="Senha para login do estudante (mínimo 6 caracteres)")
     turma: Optional[str] = Field(default=None, max_length=50, description="Ex: 'A', 'B', 'Manhã'")

@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional
 from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from starlette.concurrency import run_in_threadpool
 
 from app.core.anthropic_client import get_anthropic_client, get_default_model
 from app.models.diario_aprendizagem import (
@@ -119,7 +120,13 @@ IMPORTANTE:
 Retorne APENAS o JSON, sem explicações."""
 
         try:
-            message = self.client.messages.create(
+            # TC-044/046: o cliente Anthropic e SINCRONO. Chama-lo direto dentro
+            # de um async (rodando via BackgroundTasks no mesmo event loop) trava
+            # o loop inteiro durante a chamada de IA, e a UI fica "so processando"
+            # porque as proximas requisicoes nao sao atendidas. run_in_threadpool
+            # offloada a chamada bloqueante para uma thread, mantendo o loop livre.
+            message = await run_in_threadpool(
+                self.client.messages.create,
                 model=self.model,
                 max_tokens=3000,
                 messages=[{"role": "user", "content": prompt}]
@@ -394,7 +401,9 @@ Gere um relatório semanal completo e motivador.
 Retorne APENAS o JSON."""
 
         try:
-            message = self.client.messages.create(
+            # TC-044/046: mesma correcao do offload sincrono (ver analisar_registro).
+            message = await run_in_threadpool(
+                self.client.messages.create,
                 model=self.model,
                 max_tokens=2500,
                 messages=[{"role": "user", "content": prompt}]
