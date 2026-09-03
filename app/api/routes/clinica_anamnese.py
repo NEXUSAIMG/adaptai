@@ -29,6 +29,9 @@ _CAMPOS = [
     "historico_medico", "historico_familiar", "rotina", "comunicacao",
     "comportamento", "escolaridade", "terapias_anteriores", "medicacoes",
     "observacoes",
+    # secoes estruturadas adicionais (028)
+    "sono", "alimentacao", "perfil_sensorial", "autonomia_avds", "uso_telas",
+    "contexto_social_familiar", "objetivos_familia",
 ]
 
 
@@ -45,6 +48,13 @@ class AnamneseIn(BaseModel):
     terapias_anteriores: Optional[str] = None
     medicacoes: Optional[str] = None
     observacoes: Optional[str] = None
+    sono: Optional[str] = None
+    alimentacao: Optional[str] = None
+    perfil_sensorial: Optional[str] = None
+    autonomia_avds: Optional[str] = None
+    uso_telas: Optional[str] = None
+    contexto_social_familiar: Optional[str] = None
+    objetivos_familia: Optional[str] = None
 
 
 def _dict(a: Optional[Anamnese]) -> dict:
