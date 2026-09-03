@@ -55,6 +55,7 @@ class StudentListResponse(BaseModel):
     name: str
     email: Optional[str] = None
     grade_level: str
+    turma: Optional[str] = None
     diagnosis: Optional[Dict] = None
     is_active: bool = True
     foto_path: Optional[str] = None

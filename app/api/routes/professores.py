@@ -21,6 +21,7 @@ from app.core.security import (
     get_password_hash, create_password_reset_token, password_reset_fingerprint,
 )
 from app.core.config import settings
+from app.core.tenant import enforce_limite_professores
 from app.services.email_service import _enviar_email
 
 router = APIRouter(prefix="/escolas", tags=["🏫 Escolas (Professores)"])
@@ -102,6 +103,7 @@ def criar_professor(body: ProfessorIn, db: Session = Depends(get_db), current_us
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "E-mail invalido.")
     if db.query(User).filter(User.email == email).first():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ja existe usuario com este e-mail.")
+    enforce_limite_professores(db, current_user)
     u, senha, enviado = _criar_professor(db, eid, nome, email)
     db.commit()
     return {"id": u.id, "nome": u.name, "email": u.email, "senha_provisoria": senha, "convite_enviado": enviado}
@@ -155,6 +157,11 @@ def importar_professores_csv(
         if db.query(User).filter(User.email == email).first():
             ignorados += 1; erros.append({"linha": i, "motivo": f"email ja cadastrado: {email}"}); continue
         emails_lote.add(email)
+        try:
+            enforce_limite_professores(db, current_user)
+        except HTTPException as e:
+            erros.append({"linha": i, "motivo": e.detail}); ignorados += 1
+            break  # limite do plano atingido: nao adianta seguir as proximas linhas
         u, senha, enviado = _criar_professor(db, eid, nome, email)
         criados.append({"nome": nome, "email": email, "senha_provisoria": senha, "convite_enviado": enviado})
     db.commit()

@@ -262,6 +262,36 @@ def enforce_limite_alunos(db: Session, user: User) -> None:
         )
 
 
+def enforce_limite_professores(db: Session, user: User) -> None:
+    """
+    Bloqueia (403) a criacao de professor se a escola ja atingiu o
+    limite_professores do plano.
+
+    Enforcement soft, igual a enforce_limite_alunos: super_admin liberado; escola
+    sem assinatura ativa/trial liberada (grandfather). Conta ao vivo TODOS os
+    usuarios ativos da escola (o admin conta como professor - mesma convencao de
+    checkout.py e de Assinatura.professores_ativos).
+    """
+    if user.role == UserRole.SUPER_ADMIN:
+        return
+    assinatura = _assinatura_ativa(db, user.escola_id)
+    if not assinatura or not assinatura.plano:
+        return  # grandfather: sem plano ativo nao limita
+
+    em_uso = db.query(User).filter(
+        User.escola_id == user.escola_id,
+        User.is_active == True,  # noqa: E712
+    ).count()
+    if em_uso >= assinatura.plano.limite_professores:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Limite de professores do plano atingido ({assinatura.plano.limite_professores}). "
+                "Faça upgrade do plano para cadastrar mais professores."
+            ),
+        )
+
+
 def _inicio_do_mes_utc() -> datetime:
     """Primeiro instante do mes corrente em UTC, naive (compativel com as
     colunas DATETIME do MySQL, que sao armazenadas em UTC sem tzinfo)."""

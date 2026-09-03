@@ -317,6 +317,49 @@ def get_students_stats(
     }
 
 
+@router.get("/turmas")
+def listar_minhas_turmas(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    🧑‍🏫 Minhas turmas — agrupa os alunos por (série, turma).
+
+    Visão derivada: não existe entidade Turma no banco. A "turma" do professor é
+    o conjunto série+turma dos alunos que ele acompanha. Mesmo escopo de
+    get_students_query (professor vê os seus; admin/coordenador vê a escola;
+    super admin vê tudo). Só alunos ativos.
+    """
+    alunos = (
+        get_students_query(db, current_user)
+        .filter(Student.is_active.isnot(False))
+        .order_by(Student.name)
+        .all()
+    )
+
+    grupos: dict = {}
+    for aluno in alunos:
+        chave = (aluno.grade_level or "Sem série", aluno.turma or "Sem turma")
+        grupos.setdefault(chave, []).append({
+            "id": aluno.id,
+            "name": aluno.name,
+            "email": aluno.email,
+            "grade_level": aluno.grade_level,
+            "turma": aluno.turma,
+            "foto_path": aluno.foto_path,
+        })
+
+    return [
+        {
+            "serie": serie,
+            "turma": turma,
+            "total_alunos": len(lista),
+            "alunos": lista,
+        }
+        for (serie, turma), lista in sorted(grupos.items())
+    ]
+
+
 @router.post("/importar-csv")
 def importar_alunos_csv(
     arquivo: UploadFile = File(...),
