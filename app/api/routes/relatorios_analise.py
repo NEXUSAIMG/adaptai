@@ -18,6 +18,7 @@ from app.models.user import User
 from app.models.student import Student
 from app.models.relatorio import Relatorio
 from app.services.ai_cache_service import _hash_prompt, lookup_cache, save_cache
+from app.services import sintese_jornada_service
 
 # tokenmeter: atribuicao de consumo de IA (ver app/core/features.py)
 import tokenmeter as tm
@@ -291,3 +292,53 @@ IMPORTANTE:
             "analise_ia": None,
             "erro": str(e)
         }
+
+
+def _serializar_sintese(sintese) -> dict:
+    if not sintese:
+        return {"existe": False, "resumo": None, "dados": None,
+                "n_relatorios": 0, "atualizado_em": None}
+    return {
+        "existe": True,
+        "resumo": sintese.resumo,
+        "dados": sintese.dados_json,
+        "n_relatorios": sintese.n_relatorios,
+        "atualizado_em": str(sintese.atualizado_em) if sintese.atualizado_em else None,
+    }
+
+
+@router.get("/student/{student_id}/sintese-jornada")
+@tm.feature(F.JORNADA_TERAPEUTICA, entity_type="aluno", entity_from="student_id")
+def obter_sintese_jornada(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Sintese persistida da jornada. Regenera automaticamente se os relatorios
+    mudaram desde a ultima geracao (fonte_hash)."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Aluno nao encontrado")
+    sintese = sintese_jornada_service.obter_ou_gerar(
+        db, student_id, forcar=False, gerado_por_id=current_user.id
+    )
+    return _serializar_sintese(sintese)
+
+
+@router.post("/student/{student_id}/sintese-jornada/atualizar")
+@tm.feature(F.JORNADA_TERAPEUTICA, entity_type="aluno", entity_from="student_id")
+def atualizar_sintese_jornada(
+    student_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Botao 'atualizar agora': forca a regeneracao da sintese."""
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Aluno nao encontrado")
+    sintese = sintese_jornada_service.obter_ou_gerar(
+        db, student_id, forcar=True, gerado_por_id=current_user.id
+    )
+    if not sintese:
+        raise HTTPException(status_code=404, detail="Aluno sem relatorios para gerar a sintese.")
+    return _serializar_sintese(sintese)

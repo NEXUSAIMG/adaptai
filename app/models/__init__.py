@@ -296,5 +296,8 @@ __all__ += ["AnexoProntuario"]
 from app.models.clinica_repasse import Repasse
 __all__ += ["Repasse"]
 
+from app.models.sintese_jornada import SinteseJornada  # Sintese da Jornada Terapeutica
+__all__ += ["SinteseJornada"]
+
 from app.models.clinica_supervisao import FidelidadeAplicacao, IOARegistro
 __all__ += ["FidelidadeAplicacao", "IOARegistro"]
