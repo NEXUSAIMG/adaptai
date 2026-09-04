@@ -119,6 +119,13 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     CLAUDE_MODEL: str = "claude-sonnet-4-6"
 
+    # Prompt caching (Anthropic): cacheia o prefixo ESTATICO (system) das
+    # chamadas de IA para reduzir custo/latencia quando o mesmo bloco de
+    # instrucoes se repete entre chamadas (ex.: corrigir varias redacoes
+    # em sequencia). Desligar aqui reverte todas as chamadas ao comportamento
+    # anterior, sem tocar em codigo.
+    PROMPT_CACHE_ENABLED: bool = True
+
     # Geracao de imagem (ilustracao de conteudo). Camada trocavel:
     # IMAGE_PROVIDER decide o adapter; hoje 'flux' (Flux via fal.ai).
     # Sem FAL_API_KEY a busca de pictogramas ARASAAC continua funcionando;

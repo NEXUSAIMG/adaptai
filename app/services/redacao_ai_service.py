@@ -10,7 +10,7 @@ import re
 from app.core.logging_config import get_logger
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-from app.core.anthropic_client import get_anthropic_client, get_default_model
+from app.core.anthropic_client import get_anthropic_client, get_default_model, sistema_cacheado
 
 # tokenmeter: atribuicao de consumo de IA (ver app/core/features.py)
 import tokenmeter as tm
@@ -314,22 +314,11 @@ INFORMAÇÕES DO ALUNO:
 Considere o nível escolar e possíveis necessidades especiais ao dar feedback (seja encorajador mas honesto).
 """
 
-        prompt = f"""Você é um corretor oficial do ENEM com vasta experiência. Corrija a redação abaixo seguindo RIGOROSAMENTE os critérios do ENEM.
-
-{contexto_aluno}
-
-=== TEMA DA REDAÇÃO ===
-TÍTULO: {tema.get('titulo', '')}
-TEMA: {tema.get('tema', '')}
-PROPOSTA: {tema.get('proposta', '')}
-
-TEXTOS MOTIVADORES:
-1. {tema.get('texto_motivador_1', 'Não fornecido')}
-2. {tema.get('texto_motivador_2', 'Não fornecido')}
-3. {tema.get('texto_motivador_3', 'Não fornecido')}
-
-=== REDAÇÃO DO ALUNO ===
-{texto_redacao}
+        # PROMPT CACHING: a rubrica + instrucoes de correcao sao IDENTICAS em toda
+        # correcao -> viram o system estatico (cacheado). So o variavel (tema +
+        # redacao do aluno) vai na mensagem. Corrigir uma turma em sequencia le a
+        # rubrica do cache a ~10% do custo. Ver core/anthropic_client.sistema_cacheado.
+        system_prompt = """Você é um corretor oficial do ENEM com vasta experiência. Corrija a redação seguindo RIGOROSAMENTE os critérios do ENEM.
 
 === INSTRUÇÕES DE CORREÇÃO ===
 Analise a redação nas 5 COMPETÊNCIAS do ENEM. Cada competência vale de 0 a 200 pontos (em múltiplos de 40: 0, 40, 80, 120, 160, 200).
@@ -351,7 +340,7 @@ COMPETÊNCIA 5 - Proposta de intervenção:
 - Deve respeitar direitos humanos
 
 Responda APENAS com um JSON válido:
-{{
+{
     "nota_competencia_1": <0-200>,
     "feedback_competencia_1": "Feedback detalhado da competência 1",
     "nota_competencia_2": <0-200>,
@@ -366,14 +355,30 @@ Responda APENAS com um JSON válido:
     "pontos_fortes": ["ponto forte 1", "ponto forte 2", "ponto forte 3"],
     "pontos_melhoria": ["ponto a melhorar 1", "ponto a melhorar 2", "ponto a melhorar 3"],
     "sugestoes": ["sugestão de estudo 1", "sugestão de estudo 2"]
-}}
+}
 
 IMPORTANTE:
 - Seja JUSTO mas RIGOROSO como um corretor real do ENEM
 - O feedback deve ser EDUCATIVO e CONSTRUTIVO
 - Aponte erros específicos com exemplos do texto
-- Dê sugestões práticas de melhoria
-"""
+- Dê sugestões práticas de melhoria"""
+
+        user_content = f"""{contexto_aluno}
+
+=== TEMA DA REDAÇÃO ===
+TÍTULO: {tema.get('titulo', '')}
+TEMA: {tema.get('tema', '')}
+PROPOSTA: {tema.get('proposta', '')}
+
+TEXTOS MOTIVADORES:
+1. {tema.get('texto_motivador_1', 'Não fornecido')}
+2. {tema.get('texto_motivador_2', 'Não fornecido')}
+3. {tema.get('texto_motivador_3', 'Não fornecido')}
+
+=== REDAÇÃO DO ALUNO ===
+{texto_redacao}
+
+Corrija esta redação seguindo as instruções e responda APENAS com o JSON."""
 
         try:
             response = get_anthropic_client().messages.create(
@@ -385,7 +390,8 @@ IMPORTANTE:
                 # competencias com feedback detalhado + pontos fortes + pontos de
                 # melhoria + sugestoes + feedback geral.
                 max_tokens=10000,
-                messages=[{"role": "user", "content": prompt}]
+                system=sistema_cacheado(system_prompt),
+                messages=[{"role": "user", "content": user_content}]
             )
 
             if getattr(response, "stop_reason", None) == "max_tokens":

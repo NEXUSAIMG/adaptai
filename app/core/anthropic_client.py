@@ -127,6 +127,42 @@ def reset_anthropic_client():
         _client = None
 
 
+def sistema_cacheado(texto, ttl: str = "5m"):
+    """Formata um system prompt ESTATICO para habilitar prompt caching.
+
+    Recebe o texto fixo das instrucoes (rubrica, formato de saida, papel do
+    modelo - o que NAO muda entre chamadas) e devolve o bloco no formato que a
+    API entende como cacheavel:
+
+        [{"type": "text", "text": <texto>, "cache_control": {"type": "ephemeral"}}]
+
+    Passe o resultado em `system=` e deixe SO o conteudo variavel (a redacao do
+    aluno, o material, etc.) em `messages`. Assim o prefixo estatico e lido do
+    cache (~10% do custo do token de entrada) nas chamadas seguintes dentro da
+    janela do cache (5 min por padrao).
+
+    Regras de seguranca:
+    - Se PROMPT_CACHE_ENABLED for False, devolve o texto puro (sem cache_control).
+    - Se o texto for vazio, devolve como esta.
+    - Cacheia so o system: cachear o prompt inteiro (que muda a cada chamada) nao
+      traz ganho e ainda cobra o write - por isso o variavel NUNCA entra aqui.
+
+    OBS: ha um minimo de tokens para o cache valer (~1024 no Sonnet 4.x). Abaixo
+    disso a API simplesmente ignora o cache_control (sem erro) - conferir em
+    response.usage.cache_read_input_tokens / cache_creation_input_tokens.
+    """
+    if not texto or not str(texto).strip():
+        return texto
+    if not getattr(settings, "PROMPT_CACHE_ENABLED", True):
+        return str(texto)
+    bloco = {"type": "text", "text": str(texto)}
+    cache_control = {"type": "ephemeral"}
+    if ttl == "1h":
+        cache_control["ttl"] = "1h"
+    bloco["cache_control"] = cache_control
+    return [bloco]
+
+
 def get_default_model() -> str:
     """
     Retorna o modelo Claude padrao para tarefas complexas.
