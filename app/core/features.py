@@ -71,6 +71,8 @@ class F:
     CLINICA_COPILOTO = "clinica_copiloto"          # copiloto_service (proxima acao no PTI)
     CLINICA_GENERALIZACAO = "clinica_generalizacao"  # generalizacao_service (sintese 3 ambientes)
     EVOLUCAO_FAMILIA = "evolucao_familia"          # tradutor_familia_service (resumo p/ familia)
+    CLINICA_ANALISE_FUNCIONAL = "clinica_analise_funcional"  # analise_funcional_service (ABC->funcao)
+    EVOLUCAO_DITADO = "evolucao_ditado"            # evolucao_service.estruturar_ditado (voz->nota)
 
     @classmethod
     def all(cls) -> list[str]:

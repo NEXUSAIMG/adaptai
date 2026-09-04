@@ -87,3 +87,29 @@ def rascunhar_evolucao(
         logger.warning("Rascunho de evolucao vazio da IA.")
         texto = "(A IA nao retornou texto. Redija a evolucao manualmente.)"
     return texto
+
+
+def _prompt_ditado(texto, especialidade):
+    esp = ("Especialidade da sessao: %s\n" % especialidade) if especialidade else ""
+    return (
+        "Voce ajuda um terapeuta a organizar uma nota de evolucao DITADA POR VOZ.\n"
+        "Reescreva o ditado abaixo como uma NOTA DE EVOLUCAO clinica, em portugues,\n"
+        "clara e objetiva: corrija pontuacao e organize em ate 3 partes curtas (o que\n"
+        "foi trabalhado; desempenho e nivel de ajuda; proximo passo). NAO invente\n"
+        "fatos, NAO cite nome de paciente, NAO faca diagnostico. Preserve o conteudo\n"
+        "do ditado. Responda SOMENTE com o texto da nota (sem titulos em markdown).\n\n"
+        + esp + "Ditado:\n" + (texto or "").strip()
+    )
+
+
+@tm.feature(F.EVOLUCAO_DITADO)
+def estruturar_ditado(texto, especialidade=None):
+    """Transforma um ditado bruto (voz->texto) numa nota de evolucao organizada."""
+    client = get_anthropic_client(timeout=60.0, max_retries=2)
+    message = client.messages.create(
+        model=get_default_model(),
+        max_tokens=600,
+        messages=[{"role": "user", "content": _prompt_ditado(texto, especialidade)}],
+    )
+    out = message.content[0].text if message.content else ""
+    return (out or "").strip() or (texto or "").strip()

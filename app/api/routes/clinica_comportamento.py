@@ -7,7 +7,7 @@ acesso por paciente (equipe do caso).
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,7 @@ from app.database import get_db
 from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.core.entitlements import requer_modulo, Modulo
-from app.services import acesso_clinico
+from app.services import acesso_clinico, analise_funcional_service
 from app.models.clinica_core import AcaoAuditoria
 from app.models.clinica_comportamento import RegistroComportamento, Intensidade
 
@@ -85,3 +85,31 @@ def listar_comportamentos(
             .filter(RegistroComportamento.paciente_id == p.id)
             .order_by(RegistroComportamento.id.desc()).limit(200).all())
     return [_dict(r) for r in regs]
+
+
+@router.get("/pacientes/{paciente_id}/comportamentos/analise-funcional")
+def analise_funcional(
+    paciente_id: int,
+    comportamento: Optional[str] = Query(None, description="focar um comportamento-alvo"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Hipotese de FUNCAO do comportamento por IA (ABC -> funcao + estrategias)."""
+    p = acesso_clinico.verificar_acesso_paciente(db, paciente_id, current_user)
+    q = db.query(RegistroComportamento).filter(RegistroComportamento.paciente_id == p.id)
+    if comportamento:
+        q = q.filter(RegistroComportamento.comportamento == comportamento)
+    regs = q.order_by(RegistroComportamento.id.desc()).limit(50).all()
+    if len(regs) < 2:
+        return {
+            "funcao_provavel": "INDETERMINADA", "confianca": None,
+            "padrao": "Registre ao menos 2 ocorrencias ABC para uma analise confiavel.",
+            "estrategias": [], "sem_dados": True,
+        }
+    dados = [{
+        "comportamento": r.comportamento, "antecedente": r.antecedente,
+        "consequencia": r.consequencia, "frequencia": r.frequencia,
+        "duracao_seg": r.duracao_seg, "intensidade": _v(r.intensidade),
+    } for r in regs]
+    return analise_funcional_service.analisar(comportamento, dados)
+

@@ -29,6 +29,7 @@ from app.core.entitlements import requer_modulo, Modulo
 from app.services import acesso_clinico
 from app.services import tradutor_familia_service
 from app.services import relatorio_evolucao_service
+from app.services import evolucao_service
 from app.services import pti_service
 from app.models.clinica_core import (
     Profissional, Paciente, EquipeCaso,
@@ -696,6 +697,23 @@ def gerar_resumo_familia(
     db.commit()
     db.refresh(ev)
     return {"id": ev.id, "resumo_familia": ev.resumo_familia}
+
+
+class DitadoIn(BaseModel):
+    texto: str = Field(..., min_length=1)
+    especialidade: Optional[Especialidade] = None
+
+
+@router.post("/evolucoes/estruturar")
+def estruturar_evolucao(
+    body: DitadoIn,
+    current_user: User = Depends(get_current_user),
+):
+    """Estrutura um ditado (voz->texto) numa nota de evolucao. Nao persiste."""
+    esp = _v(body.especialidade) if body.especialidade else None
+    texto = evolucao_service.estruturar_ditado(body.texto, esp)
+    return {"texto": texto}
+
 
 
 # ============================================================================
