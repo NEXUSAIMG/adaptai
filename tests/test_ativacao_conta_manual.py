@@ -176,6 +176,24 @@ class TestAtivarContaManual:
         )
         assert r.status_code == 403
 
+    def test_sem_valor_mensal_usa_valor_do_plano(self, client, seed, TestSession):
+        """Painel simplificado (2026-09-05): sem negociar valor - so plano e
+        ativar. valor_mensal omitido cai pro Plano.valor do catalogo (99.0,
+        ver fixture seed)."""
+        payload = _payload_ativacao(seed["plano_id"], email="cliente.semvalor.p5@test.com")
+        payload.pop("valor_mensal")
+        payload.pop("status_inicial")
+        r = client.post("/planos/admin/ativar-conta", json=payload, headers=auth(seed["token_super"]))
+        assert r.status_code == 201
+
+        db = TestSession()
+        try:
+            assinatura = db.query(Assinatura).filter(Assinatura.escola_id == r.json()["escola_id"]).first()
+            assert assinatura.valor_mensal == 99.0  # Plano.valor da fixture
+            assert assinatura.status == StatusAssinatura.TRIAL.value  # default
+        finally:
+            db.close()
+
     def test_super_admin_cria_conta_trial(self, client, seed, TestSession):
         payload = _payload_ativacao(seed["plano_id"], email="cliente.trial.p5@test.com", status_inicial="trial")
         r = client.post("/planos/admin/ativar-conta", json=payload, headers=auth(seed["token_super"]))

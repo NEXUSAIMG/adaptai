@@ -505,7 +505,14 @@ def criar_escola_admin(
 
 class AtivarContaManualIn(BaseModel):
     """Payload de app/pages/SuperAdminDashboard.jsx -> AtivarContaTab (frontend
-    ja existia antes do backend - commit fe42b40, 2026-09-04)."""
+    ja existia antes do backend - commit fe42b40, 2026-09-04).
+
+    Simplificado em 2026-09-05: sem negociar valor por conta - o trial e
+    infinito de proposito (produto ainda nao e vendido), entao o super admin
+    so escolhe o plano (define os limites de uso) e ativa. `valor_mensal`
+    fica opcional (cai pro `Plano.valor` do catalogo quando omitido) so pra
+    nao quebrar quem ainda mandar o campo; a UI nao expõe mais esse input.
+    """
     escola_nome: str = Field(..., min_length=3, max_length=255)
     escola_cnpj: Optional[str] = None
     escola_tipo: str = "ESCOLA"
@@ -513,8 +520,8 @@ class AtivarContaManualIn(BaseModel):
     admin_nome: str = Field(..., min_length=3, max_length=255)
     admin_email: EmailStr
     plano_id: int
-    valor_mensal: float = Field(..., ge=0)
-    status_inicial: str = "trial"  # "trial" | "ativa"
+    valor_mensal: Optional[float] = Field(None, ge=0)
+    status_inicial: str = "trial"  # "trial" | "ativa" - trial e infinito de proposito hoje
     cep: Optional[str] = None
     cidade: Optional[str] = None
     estado: Optional[str] = None
@@ -604,7 +611,8 @@ def ativar_conta_manual(
         status=status_assinatura,
         data_inicio=agora,
         data_fim=data_fim,
-        valor_mensal=dados.valor_mensal,
+        # Sem negociacao de valor: usa o preco do catalogo do plano escolhido.
+        valor_mensal=dados.valor_mensal if dados.valor_mensal is not None else plano.valor,
         dia_vencimento=10,
         data_proxima_cobranca=prox_cobranca,
         alunos_ativos=0,

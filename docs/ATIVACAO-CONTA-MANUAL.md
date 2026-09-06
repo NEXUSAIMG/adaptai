@@ -82,6 +82,30 @@ mesmo fechamento (403, sem criar nada) - ver `tests/test_auth_register_desativad
   e `sub` = e-mail correto, e-mail duplicado → 400, plano inexistente → 404,
   `status_inicial` inválido → 400.
 
+## Simplificado em 2026-09-05 (rodada 2): sem negociar valor
+
+Decisão: como o trial é infinito de propósito (produto ainda não é vendido,
+sem cobrança real acontecendo), não faz sentido pedir um valor negociado a
+cada ativação. O painel virou: **escolher o plano (define os limites de
+uso) e ativar** - só isso.
+
+- `AtivarContaManualIn.valor_mensal` virou opcional - quando omitido, a
+  `Assinatura` nasce com `Plano.valor` (preço do catálogo), não mais um
+  valor negociado à parte.
+- `status_inicial` continua existindo no backend (default `"trial"`), mas a
+  UI não expõe mais o seletor - toda ativação pelo painel nasce em trial.
+- Frontend (`AtivarContaTab`): removidos os campos "Valor mensal" e
+  "Início" do formulário; a seção virou só "Plano".
+- Teste novo (`test_sem_valor_mensal_usa_valor_do_plano`): confirma que
+  omitir `valor_mensal` grava `Assinatura.valor_mensal = Plano.valor`.
+- Testado de novo com servidor real: `POST /admin/ativar-conta` só com
+  `escola_nome`, `admin_nome`, `admin_email`, `plano_id` → 201, e o valor
+  gravado bateu com o catálogo (plano Profissional, R$699).
+
+Quando o produto passar a cobrar de verdade (fim do trial infinito), essa
+decisão deve ser revisitada - o campo `valor_mensal` continua aceito pelo
+backend caso seja preciso voltar a negociar por conta no futuro.
+
 ## O que NÃO foi mudado nesta rodada
 
 - `POST /planos/admin/escola` (endpoint mais antigo, sem criar usuário) segue
