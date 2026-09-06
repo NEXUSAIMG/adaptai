@@ -109,3 +109,4 @@ painel.html
 _ativar_prod.py
 _setup_producao.py
 _verificar_senha.py
+run_manual.db*

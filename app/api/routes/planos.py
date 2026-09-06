@@ -1,12 +1,14 @@
 # ============================================
 # ROTAS DE PLANOS E ASSINATURAS - Multi-tenant
 # ============================================
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional
 from datetime import datetime, timedelta
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
 from app.database import get_db
 from app.api.dependencies import get_current_user
@@ -15,6 +17,10 @@ from app.models.plano import Plano
 from app.models.escola import Escola, ConfiguracaoEscola
 from app.models.assinatura import Assinatura, Fatura, StatusAssinatura, StatusFatura
 from app.core.tenant import get_tenant_context, TenantContext
+from app.core.config import settings
+from app.core.security import (
+    get_password_hash, create_password_reset_token, password_reset_fingerprint,
+)
 
 router = APIRouter(prefix="/planos", tags=["💳 Planos e Assinaturas"])
 
@@ -494,6 +500,142 @@ def criar_escola_admin(
         "escola_id": nova_escola.id,
         "plano": plano.nome,
         "status": status_inicial
+    }
+
+
+class AtivarContaManualIn(BaseModel):
+    """Payload de app/pages/SuperAdminDashboard.jsx -> AtivarContaTab (frontend
+    ja existia antes do backend - commit fe42b40, 2026-09-04).
+
+    Simplificado em 2026-09-05: sem negociar valor por conta - o trial e
+    infinito de proposito (produto ainda nao e vendido), entao o super admin
+    so escolhe o plano (define os limites de uso) e ativa. `valor_mensal`
+    fica opcional (cai pro `Plano.valor` do catalogo quando omitido) so pra
+    nao quebrar quem ainda mandar o campo; a UI nao expõe mais esse input.
+    """
+    escola_nome: str = Field(..., min_length=3, max_length=255)
+    escola_cnpj: Optional[str] = None
+    escola_tipo: str = "ESCOLA"
+    escola_telefone: Optional[str] = None
+    admin_nome: str = Field(..., min_length=3, max_length=255)
+    admin_email: EmailStr
+    plano_id: int
+    valor_mensal: Optional[float] = Field(None, ge=0)
+    status_inicial: str = "trial"  # "trial" | "ativa" - trial e infinito de proposito hoje
+    cep: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+
+
+@router.post("/admin/ativar-conta", status_code=status.HTTP_201_CREATED)
+def ativar_conta_manual(
+    dados: AtivarContaManualIn,
+    admin: User = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    👑 [SUPER ADMIN] Cria escola + admin + assinatura após negociação manual
+    (o lead fala com a equipe via WhatsApp, negocia o valor, e o super admin
+    ativa a conta aqui - ver docs/PAINEL-SUPERADMIN-MELHORIAS.md, P5).
+
+    Substitui o autocadastro público: `POST /checkout/iniciar` foi desativado
+    (só ele criava conta antes) e o frontend não expõe mais o fluxo de
+    checkout (App.jsx redireciona /checkout/:slug para /planos) - agora só
+    este endpoint, SUPER_ADMIN only, cria conta nova.
+
+    Sem tabela de preço fixa: `valor_mensal` é o negociado com o cliente;
+    `plano_id` só define os LIMITES de uso (alunos/professores/etc do
+    catálogo `Plano`), não o preço cobrado - podem divergir do
+    `Plano.valor` do catálogo à vontade.
+
+    Não gera senha para o cliente: como em `professores.py` (convite de
+    professor), a senha nasce aleatória e descartada - devolve um link de
+    "definir senha" (mesmo token de reset de senha, com fingerprint do hash
+    atual) para a equipe mandar pelo mesmo WhatsApp da negociação.
+    """
+    if dados.status_inicial not in ("trial", "ativa"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "status_inicial deve ser 'trial' ou 'ativa'")
+
+    if db.query(User).filter(User.email == dados.admin_email).first():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Já existe usuário com este e-mail")
+    if db.query(Escola).filter(Escola.email == dados.admin_email).first():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Já existe escola com este e-mail")
+    if dados.escola_cnpj and db.query(Escola).filter(Escola.cnpj == dados.escola_cnpj).first():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Já existe escola com este CNPJ")
+
+    plano = db.query(Plano).filter(Plano.id == dados.plano_id).first()
+    if not plano:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plano não encontrado")
+
+    escola = Escola(
+        nome=dados.escola_nome,
+        cnpj=dados.escola_cnpj,
+        tipo=dados.escola_tipo,
+        telefone=dados.escola_telefone,
+        email=dados.admin_email,  # Email principal = email do admin (mesmo padrao do checkout)
+        cep=dados.cep,
+        cidade=dados.cidade,
+        estado=dados.estado,
+        ativa=True,
+    )
+    db.add(escola)
+    db.flush()  # garante escola.id para a assinatura/usuario
+
+    # Senha aleatoria e descartada - ninguem usa. A conta so vira acessivel
+    # quando o cliente define a propria senha pelo link (abaixo).
+    senha_descartada = get_password_hash(secrets.token_urlsafe(24))
+    usuario = User(
+        name=dados.admin_nome,
+        email=dados.admin_email,
+        hashed_password=senha_descartada,
+        role=UserRole.ADMIN,
+        escola_id=escola.id,
+        is_active=True,
+    )
+    db.add(usuario)
+    db.flush()
+
+    agora = datetime.now()
+    if dados.status_inicial == "trial":
+        status_assinatura = StatusAssinatura.TRIAL.value
+        data_fim = agora + timedelta(days=14)
+        prox_cobranca = None
+    else:
+        status_assinatura = StatusAssinatura.ATIVA.value
+        data_fim = None
+        prox_cobranca = agora + timedelta(days=30)
+
+    assinatura = Assinatura(
+        escola_id=escola.id,
+        plano_id=plano.id,
+        status=status_assinatura,
+        data_inicio=agora,
+        data_fim=data_fim,
+        # Sem negociacao de valor: usa o preco do catalogo do plano escolhido.
+        valor_mensal=dados.valor_mensal if dados.valor_mensal is not None else plano.valor,
+        dia_vencimento=10,
+        data_proxima_cobranca=prox_cobranca,
+        alunos_ativos=0,
+        professores_ativos=1,  # o admin conta como professor, mesmo padrao do checkout
+    )
+    db.add(assinatura)
+
+    config = ConfiguracaoEscola(escola_id=escola.id)
+    db.add(config)
+
+    db.commit()
+    db.refresh(usuario)
+
+    fp = password_reset_fingerprint(usuario.hashed_password)
+    token = create_password_reset_token(usuario.email, fp)
+    link_definir_senha = f"{settings.FRONTEND_URL.rstrip('/')}/redefinir-senha?token={token}"
+
+    return {
+        "escola_id": escola.id,
+        "usuario_id": usuario.id,
+        "assinatura_id": assinatura.id,
+        "status": status_assinatura,
+        "link_definir_senha": link_definir_senha,
     }
 
 

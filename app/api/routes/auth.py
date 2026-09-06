@@ -34,44 +34,31 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 # evitar enumeracao de usuarios por timing attack.
 _DUMMY_PASSWORD_HASH = get_password_hash("dummy-password-for-timing-safety-never-used")
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(user_data: UserCreate, request: Request, db: Session = Depends(get_db)):
+@router.post("/register", status_code=status.HTTP_403_FORBIDDEN)
+def register(user_data: UserCreate):
     """
-    Registrar um novo usuario (PUBLICO).
-    
-    SEGURANCA: 
-    - Rate limited a 5 registros por hora por IP.
-    - Este endpoint SEMPRE cria usuario com role=TEACHER.
-    - Nao aceita 'role' do cliente para evitar escalacao de privilegio.
-    Para criar admin/coordenador, use endpoint protegido separado.
+    DESATIVADO (ver docs/ATIVACAO-CONTA-MANUAL.md). Não cria mais usuário
+    nenhum - só devolve 403.
+
+    Mesma decisão do checkout (`POST /checkout/iniciar`): autocadastro
+    público foi desativado, criação de conta é sempre manual, pelo super
+    admin (`POST /planos/admin/ativar-conta`). Este endpoint em particular
+    criava `User(role=TEACHER)` **sem `escola_id`** (fica `NULL`) - um
+    professor órfão, sem tenant, que nenhuma tela do sistema (escopada por
+    escola) consegue depois listar ou gerenciar. Continuava aberto e criando
+    esse órfão se chamado direto (API/Postman), mesmo sem nenhuma tela do
+    frontend expor esse caminho.
+
+    Rota mantida (não removida) só pra devolver a explicação acima em vez de
+    um 404 mudo, caso algum cliente antigo ainda bata aqui.
     """
-    check_rate_limit(
-        request, key="register", max_requests=5, window_seconds=3600,
-        error_message="Muitos registros a partir deste IP. Aguarde 1 hora."
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=(
+            "Cadastro público direto foi desativado. Para criar uma conta, "
+            "fale com a equipe (ver /planos)."
+        ),
     )
-    
-    # Verificar se o email ja existe
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Criar novo usuario - role HARDCODED para TEACHER por seguranca
-    from app.models.user import UserRole
-    new_user = User(
-        name=user_data.name,
-        email=user_data.email,
-        hashed_password=get_password_hash(user_data.password),
-        role=UserRole.TEACHER  # NUNCA aceitar role do request publico
-    )
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    return new_user
 
 @router.post("/login", response_model=Token)
 def login(
