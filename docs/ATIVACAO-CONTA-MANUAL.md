@@ -30,6 +30,31 @@ chamado direto (API/Postman), apesar da SPA não expor mais esse caminho -
 mesma classe de bug do usuário órfão em `/auth/register` (a UI escondia o
 caminho, não fechava a porta).
 
+## Testado de ponta a ponta (2026-09-05)
+
+Rodei o backend de verdade (uvicorn + sqlite local) e o frontend (vite dev)
+e dirigi o fluxo real via HTTP, não só a suíte de testes:
+
+1. `POST /auth/login` como super admin (`admin@adaptai.com.br`, criado por
+   `python -m app.scripts.setup_inicial`) → token OK.
+2. `POST /planos/seed` + `GET /planos/admin/todos` → catálogo de planos
+   disponível pro formulário.
+3. `POST /planos/admin/ativar-conta` → 201, `link_definir_senha` retornado.
+4. `POST /auth/reset-password` com o token do link → senha definida.
+5. `POST /auth/login` com a conta nova + senha definida → token OK,
+   `GET /auth/me` confirma `role: admin`, `escola_id` preenchido.
+6. `POST /planos/admin/ativar-conta` com o token da conta recém-criada (não
+   super admin) → 403 (confirma que só super admin ativa conta).
+7. `POST /checkout/iniciar` e `POST /auth/register` com payload válido →
+   403 nos dois, e **nenhuma escola/usuário foi criado** (conferido direto
+   no banco).
+
+**Achado durante o teste, corrigido na hora:** `POST /auth/register` ainda
+estava aberto nesta branch (o fechamento dele tinha ficado só na branch
+`feat/superadmin-painel-melhorias`, não mergeada) - um curl direto criou de
+verdade um `User(role=TEACHER, escola_id=NULL)` público. Reaplicado aqui o
+mesmo fechamento (403, sem criar nada) - ver `tests/test_auth_register_desativado.py`.
+
 ## O que foi implementado agora
 
 - **`app/api/routes/planos.py`** — novo `POST /admin/ativar-conta`
