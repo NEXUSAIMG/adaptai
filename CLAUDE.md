@@ -37,6 +37,12 @@ causa raiz não estiver clara.
 
 ## Documentos de arquitetura (leia antes de mexer em conteúdo)
 
+- `docs/ATIVACAO-CONTA-MANUAL.md` — autocadastro público (`/checkout/iniciar`,
+  `/auth/register`) está **desativado de propósito**: o produto ainda não é
+  vendido por self-service. Criação de conta é sempre manual, pelo super admin
+  (`POST /planos/admin/ativar-conta`, aba "Ativar Conta" do painel), depois de
+  negociação via WhatsApp. Leia antes de mexer em checkout, registro público
+  ou no painel Super Admin.
 - `docs/ARQUITETURA-CONTEUDOS.md` — diferença entre **Materiais** (biblioteca
   reutilizável do professor, N:N via `MaterialAluno`) e **Materiais Adaptados**
   (geração sob medida por aluno, usa `student.diagnosis`). Explica o padrão

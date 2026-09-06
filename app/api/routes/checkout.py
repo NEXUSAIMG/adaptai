@@ -5,226 +5,46 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from app.database import get_db
-from app.models.escola import Escola, ConfiguracaoEscola
-from app.models.user import User, UserRole
+from app.models.escola import Escola
+from app.models.user import User
 from app.models.plano import Plano
 from app.models.assinatura import Assinatura, Fatura, StatusFatura, StatusAssinatura as StatusAssinaturaDB
 from app.core.config import settings
-from app.core.anthropic_client import get_fast_model
-from app.core.security import create_access_token, get_password_hash
 from app.core.rate_limit import check_rate_limit
-from app.services.asaas_service import asaas_service, AsaasError
+from app.services.asaas_service import asaas_service
 from app.api.dependencies import get_current_active_user
-from app.schemas.multitenant import CheckoutRequest, CheckoutResponse, StatusAssinatura
+from app.schemas.multitenant import CheckoutRequest
 from pydantic import BaseModel, EmailStr
 
 router = APIRouter(prefix="/checkout", tags=["🛒 Checkout"])
 
 
-def criar_token_acesso(user_id: int, email: str) -> str:
-    """Cria token JWT para login automático após cadastro"""
-    return create_access_token(
-        data={"sub": email},
-        expires_delta=timedelta(days=7)
-    )
-
-
-@router.post("/iniciar", response_model=CheckoutResponse)
-async def iniciar_checkout(
-    dados: CheckoutRequest,
-    request: Request,
-    db: Session = Depends(get_db)
-):
+@router.post("/iniciar", status_code=status.HTTP_403_FORBIDDEN)
+async def iniciar_checkout(dados: CheckoutRequest):
     """
-    🚀 Inicia o processo de checkout (cria escola + admin + trial)
-    
-    SEGURANCA: rate limited a 3 tentativas por hora por IP, para evitar spam.
-    
-    Este endpoint cria:
-    1. A escola (tenant)
-    2. O usuario administrador
-    3. A assinatura em modo TRIAL (14 dias)
-    4. As configuracoes padrao da escola
-    
-    Retorna um token JWT para login automatico.
+    DESATIVADO (P5, ver docs/PAINEL-SUPERADMIN-MELHORIAS.md). Não cria mais
+    escola nenhuma - só devolve 403.
+
+    Autocadastro público foi desativado de propósito: o produto ainda não é
+    vendido por self-service, e criação de conta passou a ser sempre manual,
+    pelo super admin, depois de uma conversa com o cliente (ver
+    `POST /planos/admin/ativar-conta`). O frontend já refletia essa decisão
+    desde 2026-09-04 (commit fe42b40: PlanosPage.jsx virou vitrine + WhatsApp,
+    App.jsx redireciona `/checkout/:slug` para `/planos`) - só o endpoint em
+    si continuava aberto, criando escola de verdade se chamado direto
+    (API/Postman), fora do fluxo da SPA. Mesma classe de bug do P6
+    (`/auth/register`): a UI escondia o caminho, não fechava a porta.
+
+    Rota mantida (não removida) só pra devolver a explicação acima em vez de
+    um 404 mudo, caso algum cliente antigo ainda bata aqui.
     """
-    # SEGURANCA: limitar criacao de escolas a 3 por hora por IP
-    check_rate_limit(
-        request,
-        key="checkout_iniciar",
-        max_requests=3,
-        window_seconds=3600,
-        error_message="Muitas tentativas de cadastro. Aguarde 1 hora."
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=(
+            "Cadastro público direto foi desativado. Fale com a equipe (ver /planos) "
+            "para ativarmos sua conta."
+        ),
     )
-    
-    # 1. Verifica se o plano existe
-    plano = db.query(Plano).filter(
-        Plano.id == dados.plano_id,
-        Plano.ativo == True
-    ).first()
-    
-    if not plano:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Plano não encontrado ou inativo"
-        )
-    
-    # 2. Verifica se email do admin já existe
-    usuario_existente = db.query(User).filter(
-        User.email == dados.admin_email
-    ).first()
-    
-    if usuario_existente:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este email já está cadastrado. Faça login ou use outro email."
-        )
-    
-    # 3. Verifica se CNPJ já existe (se fornecido)
-    if dados.escola_cnpj:
-        escola_existente = db.query(Escola).filter(
-            Escola.cnpj == dados.escola_cnpj
-        ).first()
-        
-        if escola_existente:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Já existe uma escola cadastrada com este CNPJ"
-            )
-    
-    try:
-        # 4. Cria a escola
-        escola = Escola(
-            nome=dados.escola_nome,
-            cnpj=dados.escola_cnpj,
-            tipo=dados.escola_tipo.value,
-            email=dados.admin_email,  # Email principal = email do admin
-            cep=dados.cep,
-            cidade=dados.cidade,
-            estado=dados.estado,
-            ativa=True,
-            cor_primaria="#8B5CF6",  # Roxo AdaptAI
-            cor_secundaria="#EC4899"  # Rosa
-        )
-        db.add(escola)
-        db.flush()  # Para obter o ID
-        
-        # 5. Cria o usuario administrador (usando helper centralizado - mesmo hash do login)
-        hashed_password = get_password_hash(dados.admin_senha)
-        
-        usuario = User(
-            name=dados.admin_nome,
-            email=dados.admin_email,
-            hashed_password=hashed_password,
-            role=UserRole.ADMIN,
-            escola_id=escola.id,
-            is_active=True
-        )
-        db.add(usuario)
-        db.flush()
-        
-        # 6. Cria a assinatura em modo TRIAL
-        data_fim_trial = datetime.now() + timedelta(days=14)
-        
-        assinatura = Assinatura(
-            escola_id=escola.id,
-            plano_id=plano.id,
-            status=StatusAssinatura.TRIAL.value,
-            data_inicio=datetime.now(),
-            data_fim=data_fim_trial,
-            valor_mensal=plano.valor,
-            dia_vencimento=10,
-            alunos_ativos=0,
-            professores_ativos=1,  # O admin conta como professor
-            provas_mes_atual=0,
-            materiais_mes_atual=0,
-            peis_mes_atual=0,
-            relatorios_mes_atual=0
-        )
-        db.add(assinatura)
-        
-        # 7. Cria configurações padrão da escola
-        configuracao = ConfiguracaoEscola(
-            escola_id=escola.id,
-            # Era "claude-3-haiku-20240307", aposentado. Guardar um ID fixo aqui
-            # cria um modelo aposentado latente no banco; usa o modelo rapido atual.
-            modelo_ia_preferido=get_fast_model(),
-            quantidade_questoes_padrao=5,
-            dificuldade_padrao="medio",
-            notificacoes_email=True,
-            pei_automatico_ativo=True,
-            materiais_adaptativos_ativo=True,
-            relatorios_avancados_ativo=plano.relatorios_avancados,
-            lgpd_ativo=True
-        )
-        db.add(configuracao)
-        
-        # 8. Commit de tudo
-        db.commit()
-        
-        # 8.1 Integracao Asaas (best-effort: NAO bloqueia o onboarding/trial)
-        link_pagamento = None
-        if asaas_service.esta_configurado():
-            try:
-                cliente = asaas_service.criar_cliente(
-                    nome=dados.admin_nome,
-                    email=dados.admin_email,
-                    cpf_cnpj=dados.escola_cnpj or None,
-                    external_reference=str(escola.id),
-                )
-                customer_id = cliente.get("id")
-
-                # Primeira cobranca ao fim do trial; depois segue o ciclo mensal
-                next_due = data_fim_trial.strftime("%Y-%m-%d")
-                assinatura_asaas = asaas_service.criar_assinatura(
-                    customer_id=customer_id,
-                    valor=plano.valor,
-                    descricao=f"AdaptAI - Plano {plano.nome}",
-                    next_due_date=next_due,
-                    billing_type="UNDEFINED",  # cliente escolhe PIX/boleto/cartao
-                    cycle="MONTHLY",
-                    external_reference=str(escola.id),
-                )
-                subscription_id = assinatura_asaas.get("id")
-
-                assinatura.asaas_customer_id = customer_id
-                assinatura.asaas_subscription_id = subscription_id
-                db.commit()
-
-                # Durante o trial pode ainda nao existir cobranca (link None e ok)
-                if subscription_id:
-                    link_pagamento = asaas_service.obter_link_pagamento_assinatura(subscription_id)
-            except AsaasError as e:
-                # Trial ja foi criado; integracao pode ser refeita depois. Apenas registra.
-                print(f"[CHECKOUT/ASAAS] Integracao falhou (trial criado mesmo assim): {e}")
-            except Exception as e:
-                print(f"[CHECKOUT/ASAAS] Erro inesperado na integracao: {type(e).__name__}")
-        
-        # 9. Gera token para login automático
-        token = criar_token_acesso(usuario.id, usuario.email)
-        
-        return CheckoutResponse(
-            success=True,
-            message=f"🎉 Bem-vindo ao AdaptAI! Sua escola '{escola.nome}' foi criada com sucesso.",
-            escola_id=escola.id,
-            usuario_id=usuario.id,
-            assinatura_id=assinatura.id,
-            status=StatusAssinatura.TRIAL,
-            trial_dias=14,
-            link_pagamento=link_pagamento,
-            token=token
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        # SEGURANCA: nao vazar detalhes internos ao cliente
-        print(f"[CHECKOUT ERRO] {type(e).__name__}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Erro ao criar conta. Tente novamente em alguns minutos."
-        )
 
 
 # ============================================
