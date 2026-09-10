@@ -49,10 +49,16 @@ def coletar(store, *, dias: int = 30, service: str | None = None,
     ev = f"{store.ev.name}"
     tg = f"{store.tag.name}"
     onde = ["e.occurred_at >= :ini"]
-    p: dict = {"ini": dt.datetime.utcnow() - dt.timedelta(days=dias)}
+    # dias<=1 é o botão "hoje": janela de meia-noite UTC até agora (dia-calendário,
+    # não 24h deslizantes) — é o que se espera de "quanto gastamos hoje". O período
+    # anterior vira "ontem" inteiro, então o "vs período anterior" lê "hoje vs ontem".
+    if dias <= 1:
+        p: dict = {"ini": dt.datetime.combine(dt.datetime.utcnow().date(), dt.time())}
+    else:
+        p = {"ini": dt.datetime.utcnow() - dt.timedelta(days=dias)}
     # Janela imediatamente anterior, do mesmo tamanho — alimenta o "vs período
     # anterior" nos tiles. Só os dois números do resumo, não um painel inteiro.
-    p["ini_ant"] = p["ini"] - dt.timedelta(days=dias)
+    p["ini_ant"] = p["ini"] - dt.timedelta(days=max(dias, 1))
     filtro_extra = ""
     if service:
         onde.append("e.service = :svc"); p["svc"] = service
@@ -540,7 +546,8 @@ def _miolo(dados: dict, orcamento: float | None = None) -> str:
     # Projetar o fim do mês pela média de um período longo é enganoso: a média de
     # 365 dias dilui crescimento e sazonalidade, e a tracejada sugeriria uma
     # previsão que o número não sustenta. Acima de um mês o painel vira histórico.
-    projetar = dias_periodo <= 31
+    # "hoje" (dias<=1) não projeta: extrapolar um dia parcial para o mês é ruído.
+    projetar = 2 <= dias_periodo <= 31
     restantes = max((fim_mes - hoje).days, 0) if projetar else 0
 
     feats_top, outros = _topn(dados["por_feature"])
@@ -612,8 +619,9 @@ def _miolo(dados: dict, orcamento: float | None = None) -> str:
         t = [("Custo total", f"US$ {_fmt(custo, 2)}",
               var_custo or _rotulo_periodo(dados["dias"])),
              ("Média diária", f"US$ {_fmt(media_dia, 2)}",
-              f"projeção do mês: US$ {_fmt(custo + media_dia * restantes, 2)}"
-              if projetar else f"média dos {dados['dias']} dias"),
+              f"projeção do mês: US$ {_fmt(custo + media_dia * restantes, 2)}" if projetar
+              else "no dia até agora" if dias_periodo <= 1
+              else f"média dos {dados['dias']} dias"),
              ("Chamadas", _int(chamadas),
               f"{_int(r['tokens'])} tokens · {var_chamadas}" if var_chamadas
               else _int(r["tokens"]) + " tokens")]
@@ -679,7 +687,9 @@ def _miolo(dados: dict, orcamento: float | None = None) -> str:
           <ul class="decomp">{itens}</ul></section>"""
 
     n_dias_com_dado = len({str(x["dia"]) for x in dados["por_dia"]})
-    if n_dias_com_dado <= 1:
+    if dias_periodo <= 1:
+        sub_area = "Consumo de hoje, por feature (desde 00:00 UTC)."
+    elif n_dias_com_dado <= 1:
         sub_area = ("Um único dia com dado — sem série temporal ainda. A projeção "
                     "extrapola esse dia e vale pouco; ela fica confiável depois de "
                     "alguns dias.")
@@ -899,13 +909,13 @@ def _miolo(dados: dict, orcamento: float | None = None) -> str:
 
 def _rotulo_periodo(dias: int) -> str:
     """Nome curto do botão. Meses/anos aproximados: o corte real é sempre em dias."""
+    if dias <= 1:
+        return "hoje"
     if dias % 365 == 0 and dias >= 365:
         n = dias // 365
         return "1 ano" if n == 1 else f"{n} anos"
     if dias % 30 == 0 and dias >= 60:
         return f"{dias // 30} meses"
-    if dias == 7:
-        return "7 dias"
     return f"{dias} dias"
 
 
@@ -1071,9 +1081,10 @@ if(h)document.querySelector('.pb[data-p="'+h+'"]')?.click();
 </script></body></html>"""
 
 
-# Janelas oferecidas por padrão. Semana, mês, trimestre, semestre e ano — todas
-# deslizantes a partir de hoje, como o resto do painel; nenhuma é mês-calendário.
-PERIODOS_PADRAO = (7, 30, 90, 180, 365)
+# Janelas oferecidas por padrão. "hoje" (1) é o único dia-calendário — desde
+# 00:00 UTC; as demais (semana, mês, trimestre, semestre, ano) são deslizantes
+# a partir de agora, como o resto do painel.
+PERIODOS_PADRAO = (1, 7, 30, 90, 180, 365)
 
 
 def gerar(store, caminho: str, **kw) -> str:
