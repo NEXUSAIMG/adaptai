@@ -155,11 +155,19 @@ Por favor, adapte as questões considerando:
             _db_j = SessionLocal()
             try:
                 _aid = request.aluno_ids[0]
-                ctx_jornada = sintese_jornada_service.contexto_para_prompt(_db_j, _aid)
-                # Biblioteca de Estrategias de Adaptacao (KB curada) do aluno.
+                ctx_jornada = ""
                 ctx_estrategias = ""
-                _aluno = _db_j.query(Student).filter(Student.id == _aid).first()
+                # SEGURANCA (anti-IDOR): so le jornada/diagnostico se o professor
+                # tem acesso a este aluno - sem isso, qualquer professor conseguia
+                # usar o laudo (dado clinico sensivel) de aluno de outro professor
+                # para moldar o prompt da IA (docs/SEGURANCA-2026-09-14-idor-provas-gerar.md).
+                try:
+                    _aluno = verificar_acesso_aluno(_db_j, _aid, current_user)
+                except HTTPException:
+                    _aluno = None
                 if _aluno is not None:
+                    ctx_jornada = sintese_jornada_service.contexto_para_prompt(_db_j, _aid)
+                    # Biblioteca de Estrategias de Adaptacao (KB curada) do aluno.
                     ctx_estrategias = estrategias_service.diretrizes_para_diagnostico(
                         _db_j, _aluno.diagnosis or {}, getattr(_aluno, "escola_id", None)
                     )
@@ -243,8 +251,14 @@ Por favor, adapte as questões considerando:
                 print(f"[ASSOCIANDO] Prova a {len(request.aluno_ids)} aluno(s)...")
                 
                 for aluno_id in request.aluno_ids:
-                    # Verifica se aluno existe
-                    aluno = db.query(Student).filter(Student.id == aluno_id).first()
+                    # SEGURANCA (anti-IDOR): so associa se o professor tem acesso
+                    # a este aluno - antes checava so existencia, permitindo
+                    # empurrar prova pra aluno de outro professor/escola
+                    # (docs/SEGURANCA-2026-09-14-idor-provas-gerar.md).
+                    try:
+                        aluno = verificar_acesso_aluno(db, aluno_id, current_user)
+                    except HTTPException:
+                        aluno = None
                     if aluno:
                         # Verifica se já não está associado
                         ja_associado = db.query(ProvaAluno).filter(
