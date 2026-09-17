@@ -1,8 +1,9 @@
 """
 Modelo de Relatórios de Terapias e Acompanhamento
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean, LargeBinary
+from sqlalchemy.dialects.mysql import MEDIUMBLOB
+from sqlalchemy.orm import relationship, deferred
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -41,9 +42,14 @@ class Relatorio(Base):
     arquivo_nome = Column(String(255))
     arquivo_tipo = Column(String(50))  # application/pdf, image/jpeg, etc.
     
-    # NOVO: Caminho do arquivo no storage
+    # NOVO: Caminho do arquivo no storage (cache local - ver ARQUITETURA-CONTEUDOS.md secao 4)
     arquivo_path = Column(String(500), nullable=True)  # Ex: "relatorio_1_20241219_abc123.pdf"
-    
+
+    # Bytes do laudo original (migration 031). Fonte de verdade a partir daqui -
+    # arquivo_path/disco e cache efemero (Railway), some a cada redeploy. deferred
+    # pra nao pesar nas listagens (mesmo motivo de Material.conteudo_gerado).
+    arquivo_bytes = deferred(Column(MEDIUMBLOB().with_variant(LargeBinary, "sqlite"), nullable=True))
+
     # ALTERADO: Agora aceita NULL (sistema antigo usava, novo não usa mais)
     arquivo_base64 = Column(Text, nullable=True)  # Arquivo em base64 (DEPRECATED - usar arquivo_path)
     

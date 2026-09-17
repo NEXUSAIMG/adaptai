@@ -3,7 +3,7 @@ Rotas de Relatórios de Terapias e Acompanhamento
 VERSÃO COM PROCESSAMENTO ASSÍNCRONO - OTIMIZADO!
 """
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 from typing import List, Optional
@@ -625,18 +625,19 @@ async def upload_e_analisar_relatorio(
         arquivo_nome=arquivo.filename[:255],
         arquivo_tipo=content_type[:50],
         arquivo_base64=None,
+        arquivo_bytes=file_content,
         dados_extraidos={"json_path": safe_json_filename},
         condicoes=None,
         created_by=current_user.id
     )
-    
+
     if hasattr(Relatorio, 'arquivo_path'):
         setattr(novo_relatorio, 'arquivo_path', safe_pdf_filename)
-    
+
     db.add(novo_relatorio)
     db.commit()
     db.refresh(novo_relatorio)
-    
+
     print(f"✅ Relatório {novo_relatorio.id} salvo no banco!")
     
     # Adicionar processamento em BACKGROUND
@@ -779,6 +780,7 @@ async def upload_e_analisar_rapido(
         arquivo_nome=arquivo.filename[:255],
         arquivo_tipo=content_type[:50],
         arquivo_base64=None,
+        arquivo_bytes=file_content,
         dados_extraidos={"json_path": safe_json_filename},
         condicoes=None,
         created_by=current_user.id
@@ -836,13 +838,26 @@ async def baixar_arquivo_relatorio(
     
     # IDOR: verifica acesso ao aluno dono do laudo
     verificar_acesso_aluno(db, relatorio.student_id, current_user)
-    
-    if not relatorio.arquivo_path:
+
+    if not relatorio.arquivo_path and not relatorio.arquivo_bytes:
         raise HTTPException(
             status_code=404,
             detail="Este relatorio nao tem arquivo associado (sistema antigo)."
         )
-    
+
+    nome_download = relatorio.arquivo_nome or relatorio.arquivo_path or "laudo"
+    media_type = relatorio.arquivo_tipo or "application/octet-stream"
+
+    # Fonte de verdade: arquivo_bytes (banco, persistente). arquivo_path/disco
+    # so serve de fallback pra laudo enviado antes da migration 031 - se o
+    # arquivo ja tiver sido perdido no redeploy, o 404 abaixo e irrecuperavel.
+    if relatorio.arquivo_bytes:
+        return Response(
+            content=relatorio.arquivo_bytes,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{nome_download}"'},
+        )
+
     # Protecao contra path traversal: arquivo_path so pode ser um nome de arquivo,
     # sem barras ou .. (o banco deveria armazenar apenas basename).
     nome_arquivo = Path(relatorio.arquivo_path).name
@@ -863,10 +878,7 @@ async def baixar_arquivo_relatorio(
             raise HTTPException(status_code=400, detail="Caminho fora da pasta permitida")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Arquivo nao encontrado no disco")
-    
-    media_type = relatorio.arquivo_tipo or "application/octet-stream"
-    nome_download = relatorio.arquivo_nome or nome_arquivo
-    
+
     return FileResponse(
         path=str(caminho_resolvido),
         media_type=media_type,
