@@ -27,8 +27,8 @@ class RelatorioProcessorIncremental:
     def __init__(self, anthropic_client, modelo=None):
         self.client = anthropic_client
         # Fallback do modelo: antes 'claude-3-5-sonnet-20241022' (aposentado em
-        # 28/10/2025). Em prod usa settings.CLAUDE_MODEL; o fallback agora e atual.
-        self.modelo = modelo or settings.CLAUDE_MODEL or "claude-sonnet-4-6"
+        # 28/10/2025). Em prod usa settings.LLM_MODEL; o fallback agora e atual.
+        self.modelo = modelo or settings.LLM_MODEL
     
     async def processar_incremental(
         self,

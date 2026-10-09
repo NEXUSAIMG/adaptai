@@ -42,7 +42,7 @@ from app.core.features import F
 
 router = APIRouter(prefix="/relatorios", tags=["Relatórios de Terapias"])
 
-# Modelo para visao (controlado via settings.CLAUDE_MODEL com fallback)
+# Modelo para visao (controlado via settings.LLM_MODEL com fallback)
 MODELO_VISAO = get_default_model()
 
 # Diretorio para salvar relatorios

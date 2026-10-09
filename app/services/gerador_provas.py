@@ -12,7 +12,7 @@ class GeradorProvasService:
     
     def __init__(self):
         self._client = None
-        self.model = settings.CLAUDE_MODEL
+        self.model = settings.LLM_MODEL
     
     @property
     def client(self):

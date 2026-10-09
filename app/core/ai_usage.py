@@ -35,7 +35,7 @@ logger = get_logger(__name__)
 # por get_default_model()/get_fast_model() (app/core/anthropic_client.py) e
 # alguns predecessores recentes, para o calculo de custo nao quebrar logo
 # apos uma troca de modelo. Atualizar aqui quando o pricing da Anthropic mudar
-# ou um novo modelo entrar em uso (settings.CLAUDE_MODEL).
+# ou um novo modelo entrar em uso (settings.LLM_MODEL).
 PRECOS_USD_POR_MTOK = {
     "claude-opus-5": {"input": 5.00, "output": 25.00},
     "claude-opus-4-8": {"input": 5.00, "output": 25.00},

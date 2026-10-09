@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 _client = None
 # Modelo (tier capaz). Antes cravava 'claude-sonnet-4-20250514' (Sonnet 4),
 # que entra em retirement em 15/06/2026. get_default_model() resolve o modelo
-# configurado no ambiente (settings.CLAUDE_MODEL), igual ao completo_service.
+# configurado no ambiente (settings.LLM_MODEL), igual ao completo_service.
 MODELO_IA = get_default_model()
 
 

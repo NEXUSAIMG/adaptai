@@ -127,9 +127,13 @@ class Settings(BaseSettings):
     # agregado (tokenmeter export). Ver tokenmeter.prune / docs/API.md.
     TOKENMETER_RETENTION_DAYS: int = 0
 
-    # Claude API (Anthropic)
-    ANTHROPIC_API_KEY: str = ""
-    CLAUDE_MODEL: str = "claude-sonnet-4-6"
+    # LLM: DeepSeek via endpoint compativel com a API da Anthropic (o SDK
+    # `anthropic` continua sendo o client; so muda base_url/key/modelos).
+    # Ver app/core/anthropic_client.py.
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/anthropic"
+    LLM_MODEL: str = "deepseek-v4-pro"        # tarefas complexas (so texto)
+    LLM_FAST_MODEL: str = "deepseek-flash"    # rapido/barato + unico com visao
 
     # Prompt caching (Anthropic): cacheia o prefixo ESTATICO (system) das
     # chamadas de IA para reduzir custo/latencia quando o mesmo bloco de
@@ -255,10 +259,10 @@ if _IS_PROD:
             "Gere uma nova com: python -c \"import secrets; print(secrets.token_hex(32))\""
         )
 
-    # Verifica ANTHROPIC_API_KEY - FATAL em producao se vazia
-    if not settings.ANTHROPIC_API_KEY or not settings.ANTHROPIC_API_KEY.strip():
+    # Verifica DEEPSEEK_API_KEY - FATAL em producao se vazia
+    if not settings.DEEPSEEK_API_KEY or not settings.DEEPSEEK_API_KEY.strip():
         raise RuntimeError(
-            "FATAL: ANTHROPIC_API_KEY nao configurada em producao. "
+            "FATAL: DEEPSEEK_API_KEY nao configurada em producao. "
             "Configure no Railway antes do deploy."
         )
 
