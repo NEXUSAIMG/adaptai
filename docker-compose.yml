@@ -1,0 +1,44 @@
+# Ambiente local completo: MySQL + backend + frontend (repo irmao ../adaptai-frontend).
+#   docker compose up --build
+#   front: http://localhost:5173   (login demo@adaptai.com.br / demo123)
+#   back:  http://localhost:8000/docs
+# DEEPSEEK_API_KEY vem do .env desta pasta (docker compose le sozinho p/ interpolar).
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: adaptai
+      MYSQL_USER: adaptai
+      MYSQL_PASSWORD: adaptai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes: [db:/var/lib/mysql]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      retries: 30
+
+  backend:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: mysql+pymysql://adaptai:adaptai@db:3306/adaptai?charset=utf8mb4
+      SECRET_KEY: dev-local-docker-0123456789abcdef0123456789abcdef
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?defina DEEPSEEK_API_KEY no .env}
+      LLM_MODEL: deepseek-v4-pro      # tarefas dificeis
+      LLM_FAST_MODEL: deepseek-flash  # tarefas simples + visao (V4.1-Flash)
+      FRONTEND_URL: http://localhost:5173
+    ports: ["8000:8000"]
+
+  frontend:
+    build:
+      context: ../adaptai-frontend
+      args:
+        VITE_API_URL: http://localhost:8000/api/v1
+    depends_on: [backend]
+    ports: ["5173:5173"]
+
+volumes:
+  db:

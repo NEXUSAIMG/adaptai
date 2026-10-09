@@ -29,7 +29,7 @@ class ProvaAIService:
     
     def __init__(self):
         self._client = None
-        self.model = settings.CLAUDE_MODEL
+        self.model = settings.LLM_MODEL
         self.max_retries = 3          # tentativas para gerar questoes
         self.timeout_seconds = 120.0  # timeout por chamada a IA
     

@@ -40,9 +40,92 @@ Para cache automatico (ECONOMIA DE CREDITOS), use:
     from app.services.ai_cache_service import cached_completion
     text = cached_completion(prompt="...", cache_type="mapa_mental")
 """
+import base64
+from functools import cached_property
 from typing import Optional
 from threading import Lock
 from app.core.config import settings
+
+
+# O LLM e o DeepSeek, falando o protocolo Messages da Anthropic
+# (settings.DEEPSEEK_BASE_URL). Tres diferencas tratadas AQUI, num ponto so,
+# para os ~45 call sites que leem `response.content[0].text` seguirem intactos:
+# 1. DeepSeek responde com um bloco `thinking` antes do texto -> desligado por
+#    padrao (quem quiser pensar passa `thinking=` explicito).
+# 2. So o LLM_FAST_MODEL (flash) enxerga imagem; o pro ignora em silencio e
+#    alucina -> chamada com imagem/documento vai sempre para o flash.
+# 3. Nenhum dos dois aceita bloco `document` (PDF) -> cada pagina vira PNG.
+_MAX_PAGINAS_PDF = 20  # ponytail: corta PDFs longos; subir se laudos > 20 pags aparecerem
+
+
+def _pdf_para_imagens(bloco):
+    import fitz  # PyMuPDF, ja dependencia (relatorio_extrator_service)
+    doc = fitz.open(stream=base64.b64decode(bloco["source"]["data"]), filetype="pdf")
+    return [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": base64.b64encode(p.get_pixmap(dpi=110).tobytes("png")).decode(),
+            },
+        }
+        for p in doc.pages(0, min(len(doc), _MAX_PAGINAS_PDF))
+    ]
+
+
+def _adaptar_midia(messages):
+    """Devolve (messages com PDFs convertidos em imagens, tem_midia)."""
+    tem_midia = False
+    saida = []
+    for msg in messages:
+        conteudo = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(conteudo, list):
+            saida.append(msg)
+            continue
+        novo = []
+        for bloco in conteudo:
+            tipo = bloco.get("type") if isinstance(bloco, dict) else None
+            if tipo in ("image", "document"):
+                tem_midia = True
+            src = (bloco.get("source") or {}) if tipo == "document" else {}
+            if src.get("type") == "base64" and src.get("media_type") == "application/pdf":
+                novo.extend(_pdf_para_imagens(bloco))
+            else:
+                novo.append(bloco)
+        saida.append({**msg, "content": novo})
+    return saida, tem_midia
+
+
+def _messages_deepseek():
+    from anthropic.resources.messages import Messages
+
+    class _MessagesDeepSeek(Messages):
+        def create(self, **kwargs):
+            kwargs.setdefault("thinking", {"type": "disabled"})
+            msgs, tem_midia = _adaptar_midia(kwargs.get("messages") or [])
+            if tem_midia:
+                kwargs["messages"] = msgs
+                kwargs["model"] = get_fast_model()
+            return super().create(**kwargs)
+
+    return _MessagesDeepSeek
+
+
+def _nova_instancia(**opcoes):
+    from anthropic import Anthropic
+
+    class _DeepSeek(Anthropic):
+        # with_options()/copy() usam self.__class__, entao derivados herdam isso.
+        @cached_property
+        def messages(self):
+            return _messages_deepseek()(self)
+
+    return _DeepSeek(
+        api_key=settings.DEEPSEEK_API_KEY,
+        base_url=settings.DEEPSEEK_BASE_URL,
+        **opcoes,
+    )
 
 
 # Instancia singleton - inicializada sob demanda
@@ -81,21 +164,20 @@ def get_anthropic_client(*, timeout=None, max_retries=None):
         `.with_options()` - que continua instrumentado.
 
     Raises:
-        RuntimeError: se ANTHROPIC_API_KEY nao estiver configurada.
+        RuntimeError: se DEEPSEEK_API_KEY nao estiver configurada.
     """
     global _client
     if _client is None:
         with _client_lock:
             # Double-check apos obter lock
             if _client is None:
-                if not settings.ANTHROPIC_API_KEY or not settings.ANTHROPIC_API_KEY.strip():
+                if not settings.DEEPSEEK_API_KEY or not settings.DEEPSEEK_API_KEY.strip():
                     raise RuntimeError(
-                        "ANTHROPIC_API_KEY nao configurada. "
+                        "DEEPSEEK_API_KEY nao configurada. "
                         "Defina no .env ou nas variaveis de ambiente do Railway."
                     )
                 # Import lazy - evita erro na inicializacao se anthropic nao estiver instalado
-                from anthropic import Anthropic
-                _client = _instrumentar(Anthropic(api_key=settings.ANTHROPIC_API_KEY))
+                _client = _instrumentar(_nova_instancia())
 
     if timeout is None and max_retries is None:
         return _client
@@ -114,8 +196,7 @@ def get_anthropic_client(*, timeout=None, max_retries=None):
         # SDK antigo ou sem suporte a with_options: cai para uma instancia propria
         # com as mesmas opcoes. Custa um handshake TLS a mais, mas nao derruba a
         # feature nem perde o tracking - as duas coisas que nao podem acontecer.
-        from anthropic import Anthropic
-        return _instrumentar(Anthropic(api_key=settings.ANTHROPIC_API_KEY, **opcoes))
+        return _instrumentar(_nova_instancia(**opcoes))
 
 
 def reset_anthropic_client():
@@ -165,19 +246,16 @@ def sistema_cacheado(texto, ttl: str = "5m"):
 
 def get_default_model() -> str:
     """
-    Retorna o modelo Claude padrao para tarefas complexas.
-    Controlado por settings.CLAUDE_MODEL.
-    
-    Fallback: claude-sonnet-4-6 (modelo balanceado atual; geracao 3.x foi aposentada).
+    Retorna o modelo padrao para tarefas complexas (settings.LLM_MODEL).
+    So texto: chamadas com imagem sao desviadas para o fast no client.
     """
-    return settings.CLAUDE_MODEL or "claude-sonnet-4-6"
+    return settings.LLM_MODEL or "deepseek-v4-pro"
 
 
 def get_fast_model() -> str:
     """
-    Retorna um modelo Claude rapido/barato para tarefas simples
-    (classificacao, extracao de campos, resumos curtos).
-    
-    Nao e sobrescrito por config - sempre usa Haiku (4.5) por ser o mais rapido.
+    Retorna o modelo rapido/barato (settings.LLM_FAST_MODEL) para tarefas
+    simples (classificacao, extracao de campos, resumos curtos). Tambem e o
+    unico com visao.
     """
-    return "claude-haiku-4-5-20251001"
+    return settings.LLM_FAST_MODEL or "deepseek-flash"

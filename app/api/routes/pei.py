@@ -27,7 +27,7 @@ router = APIRouter(prefix="/pei", tags=["PEI - Plano Educacional Individualizado
 # Diretorio de relatorios
 RELATORIOS_DIR = Path(__file__).parent.parent.parent.parent / "storage" / "relatorios"
 
-# Modelo que suporta PDFs e imagens (controlado via settings.CLAUDE_MODEL).
+# Modelo que suporta PDFs e imagens (controlado via settings.LLM_MODEL).
 # Antes cravava 'claude-3-5-sonnet-20241022', aposentado em 28/10/2025.
 MODELO_VISAO = get_default_model()
 

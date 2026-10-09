@@ -68,7 +68,7 @@ class MaterialGeracaoService:
         # chegou a executar (a tabela `materiais` so tem 3 registros, todos de nov/2025
         # e todos com status=disponivel), entao NAO houve falha em producao: era um bug
         # latente, que dispararia no proximo uso da feature.
-        # get_default_model() resolve settings.CLAUDE_MODEL e nao envelhece sozinho.
+        # get_default_model() resolve settings.LLM_MODEL e nao envelhece sozinho.
         self.model = get_default_model()
     
     @property

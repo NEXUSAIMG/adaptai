@@ -1,4 +1,4 @@
-from app.core.anthropic_client import get_anthropic_client
+from app.core.anthropic_client import get_anthropic_client, get_default_model
 import json
 from typing import List, Dict
 from app.core.config import settings
@@ -10,7 +10,7 @@ from app.core.features import F
 class AIService:
     def __init__(self):
         self._client = None
-        self.model = settings.CLAUDE_MODEL
+        self.model = get_default_model()
     
     @property
     def client(self):

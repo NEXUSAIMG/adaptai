@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
         "AdaptAI backend starting",
         extra={
             "version": settings.VERSION,
-            "ai_model": settings.CLAUDE_MODEL,
+            "ai_model": settings.LLM_MODEL,
             "production": IS_PRODUCTION_STARTUP,
         },
     )

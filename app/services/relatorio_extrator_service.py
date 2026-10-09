@@ -28,7 +28,7 @@ class RelatorioExtratorService:
     
     def __init__(self):
         self.client = get_anthropic_client()
-        self.model = settings.CLAUDE_MODEL
+        self.model = settings.LLM_MODEL
     
     def extrair_texto_pdf(self, pdf_path: str) -> str:
         """Extrai texto de um arquivo PDF"""

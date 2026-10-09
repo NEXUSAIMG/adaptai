@@ -28,7 +28,7 @@ _client = None
 # Era "claude-3-5-sonnet-20241022", que a Anthropic aposentou em 28/10/2025.
 # Sem uso registrado neste caminho (nenhum material com tipo_geracao='ia_pei' no
 # banco), entao era bug latente, nao falha ativa.
-# Resolvido em tempo de import a partir de settings.CLAUDE_MODEL.
+# Resolvido em tempo de import a partir de settings.LLM_MODEL.
 MODELO_IA = get_default_model()
 
 
