@@ -19,7 +19,9 @@ services:
       retries: 30
 
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.dev  # nome != Dockerfile: o Railway usa qualquer /Dockerfile e ignora o builder do railway.json
     depends_on:
       db: { condition: service_healthy }
     environment:
