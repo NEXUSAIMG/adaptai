@@ -117,7 +117,7 @@ class Settings(BaseSettings):
 
     # Token de acesso ao painel de consumo de IA (/admin/ai-usage/painel?token=).
     # Alternativa ao Basic Auth para abrir o painel de fora do app - usado pela
-    # function de proxy na Vercel. Vazio = so Basic Auth (comportamento antigo).
+    # proxy /consumo-ia do frontend (Railway). Vazio = so Basic Auth (comportamento antigo).
     PAINEL_TOKEN: str = ""
 
     # Retencao da tabela tm_usage_event: no startup, apaga eventos mais antigos
@@ -164,16 +164,12 @@ class Settings(BaseSettings):
     ASAAS_WEBHOOK_TOKEN: str = ""  # validado no header 'asaas-access-token' do webhook
 
     # CORS - Origens permitidas (separadas por vírgula)
-    BACKEND_CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://*.vercel.app"
+    BACKEND_CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
 
     @property
     def cors_origins(self) -> List[str]:
         """Converte a string de CORS em lista"""
-        origins = [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",")]
-        # Em produção, permite qualquer subdomínio vercel.app
-        if self.ENVIRONMENT == "production":
-            origins.append("https://*.vercel.app")
-        return origins
+        return [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",") if origin.strip()]
 
     @property
     def asaas_base_url(self) -> str:
