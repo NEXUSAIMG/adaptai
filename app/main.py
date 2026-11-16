@@ -246,12 +246,10 @@ ALLOWED_ORIGINS_DEV = [
 ]
 
 # Origens permitidas em producao.
-# SEGURANCA: lista FECHADA. Adicione aqui os dominios reais de frontend.
-# Tambem aceita FRONTEND_URL via env var para flexibilidade em multi-deploy.
-ALLOWED_ORIGINS_PROD = [
-    "https://adaptai-frontend.vercel.app",
-    # Adicione outros dominios de producao aqui se houver (dominio proprio, staging, etc)
-]
+# SEGURANCA: lista FECHADA. O front de producao (Railway) entra por FRONTEND_URL;
+# dominio proprio ou staging, se houver, entram aqui. Sem FRONTEND_URL nenhuma
+# origem de producao e aceita. O front na Vercel foi desativado (nov/2026).
+ALLOWED_ORIGINS_PROD: list[str] = []
 
 # Permitir adicionar origem extra via env var (ex: dominio proprio)
 _extra_origin = os.getenv("FRONTEND_URL")

@@ -304,7 +304,7 @@ def obter_painel_uso_ia(
     Duas formas de acesso:
     - no navegador: usuario e senha de um admin via Basic Auth;
     - `?token=<PAINEL_TOKEN>`: para abrir de fora do app sem sessao (usado
-      pela function de proxy na Vercel). So funciona se PAINEL_TOKEN estiver
+      pelo proxy /consumo-ia do frontend, no Railway). So funciona se PAINEL_TOKEN estiver
       configurado no backend.
 
     - `dias`: janela que abre selecionada no seletor de periodo (default 30)

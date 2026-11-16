@@ -1,5 +1,10 @@
 # Painel de consumo de IA na Vercel
 
+> **Obsoleto (nov/2026).** O proxy agora é o `server.js` do frontend, no Railway
+> (`/consumo-ia?key=...`, variáveis `PAINEL_URL`, `PAINEL_TOKEN` e `PAINEL_KEY` no
+> serviço do frontend). A Vercel e o `api/painel.js` foram removidos. O texto abaixo
+> fica como histórico.
+
 O painel (`tokenmeter`) é gerado pelo backend (Python + MySQL, no Railway) e sai
 como **um HTML autocontido**. Para acompanhá-lo por uma URL na Vercel — sem abrir
 o app, sem o diálogo de usuário/senha do Basic Auth — há uma function de proxy.
